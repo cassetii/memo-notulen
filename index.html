@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Form Notulen dan Memo</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.1/xlsx.full.min.js"></script>
+
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-storage.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.0.0/firebase-firestore.js"></script>
+
     <style>
         /* Reset default margin and padding */
         * {
@@ -202,117 +208,99 @@
     </div>
 
     <script>
-        // Mendapatkan data memo yang telah disimpan di localStorage
-        function getMemosFromStorage() {
-            const memos = localStorage.getItem('memos');
-            return memos ? JSON.parse(memos) : [];
-        }
+        // Konfigurasi Firebase (gunakan konfigurasi dari Firebase Console)
+        const firebaseConfig = {
+            apiKey: "API_KEY",  // Ganti dengan API Key dari Firebase Anda
+            authDomain: "PROJECT_ID.firebaseapp.com",  // Ganti dengan Project ID Anda
+            projectId: "PROJECT_ID",  // Ganti dengan Project ID Anda
+            storageBucket: "PROJECT_ID.appspot.com",  // Ganti dengan Storage Bucket Anda
+            messagingSenderId: "SENDER_ID",  // Ganti dengan Sender ID Anda
+            appId: "APP_ID"  // Ganti dengan App ID Anda
+        };
 
-        // Menyimpan data memo ke localStorage
-        function saveMemosToStorage(memos) {
-            localStorage.setItem('memos', JSON.stringify(memos));
-        }
+        // Inisialisasi Firebase
+        const app = firebase.initializeApp(firebaseConfig);
+        const storage = firebase.storage();
+        const db = firebase.firestore();
 
-        // Tampilkan memo dalam list
-        function displayMemos() {
-            const memos = getMemosFromStorage();
-            const memosContainer = document.getElementById('memosContainer');
-            memosContainer.innerHTML = ''; // Clear previous memos
-
-            memos.forEach((memo, index) => {
-                const memoItem = document.createElement('div');
-                memoItem.classList.add('memo-item');
-                memoItem.innerHTML = `
-                    <strong>Nomor Memo:</strong> ${memo.nomorMemo}
-                    <span><strong>Perihal:</strong> ${memo.perihal}</span>
-                    <span><strong>Tanggal:</strong> ${memo.tanggal}</span>
-                    <span><strong>Status:</strong> ${memo.statusNotulen}</span>
-                    <br>
-                    <button class="view" onclick="viewPdf(${index})">Lihat Memo PDF</button>
-                    <button class="edit" onclick="editMemo(${index})">Edit</button>
-                    <button class="delete" onclick="deleteMemo(${index})">Hapus</button>
-                `;
-                memosContainer.appendChild(memoItem);
+        // Fungsi untuk meng-upload file ke Firebase Storage
+        function uploadFile(file) {
+            const storageRef = storage.ref('files/' + file.name);
+            const uploadTask = storageRef.put(file);
+            uploadTask.on('state_changed', function(snapshot) {
+                // Progress bar (opsional)
+            }, function(error) {
+                console.error(error);
+            }, function() {
+                uploadTask.snapshot.ref.getDownloadURL().then(function(downloadURL) {
+                    // Simpan URL file PDF di Firestore
+                    saveMemoToFirestore(downloadURL);
+                });
             });
         }
 
-        // Fungsi untuk mengedit memo
-        function editMemo(index) {
-            const memos = getMemosFromStorage();
-            const memo = memos[index];
+        // Simpan data memo ke Firestore
+        function saveMemoToFirestore(pdfUrl) {
+            const memoData = {
+                nomorMemo: document.getElementById('nomorMemo').value,
+                perihal: document.getElementById('perihal').value,
+                tanggal: document.getElementById('tanggal').value,
+                statusNotulen: document.getElementById('statusNotulen').value,
+                pdfUrl: pdfUrl
+            };
 
-            // Isi form dengan data yang akan diedit
-            document.getElementById('nomorMemo').value = memo.nomorMemo;
-            document.getElementById('perihal').value = memo.perihal;
-            document.getElementById('tanggal').value = memo.tanggal;
-            document.getElementById('statusNotulen').value = memo.statusNotulen;
-
-            // Hapus memo dari localStorage, sehingga bisa disimpan kembali dengan perubahan
-            deleteMemo(index);
+            db.collection('memos').add(memoData)
+                .then(() => {
+                    document.getElementById('statusMessage').textContent = 'Memo berhasil disimpan!';
+                    displayMemos(); // Perbarui tampilan daftar memo
+                })
+                .catch((error) => {
+                    console.error('Error adding document: ', error);
+                    document.getElementById('statusMessage').textContent = 'Terjadi kesalahan saat menyimpan data.';
+                });
         }
 
-        // Fungsi untuk menghapus memo
-        function deleteMemo(index) {
-            let memos = getMemosFromStorage();
-            memos.splice(index, 1); // Hapus memo berdasarkan index
-            saveMemosToStorage(memos);
-            displayMemos(); // Perbarui tampilan daftar memo
+        // Event listener untuk submit form
+        document.getElementById('memoForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            const pdfFile = document.getElementById('pdfFile').files[0];
+            if (pdfFile) {
+                uploadFile(pdfFile);
+            }
+        });
+
+        // Tampilkan daftar memo ketika halaman pertama kali dimuat
+        function displayMemos() {
+            db.collection('memos').get().then((querySnapshot) => {
+                const memosContainer = document.getElementById('memosContainer');
+                memosContainer.innerHTML = ''; // Clear previous memos
+                querySnapshot.forEach((doc) => {
+                    const memo = doc.data();
+                    const memoItem = document.createElement('div');
+                    memoItem.classList.add('memo-item');
+                    memoItem.innerHTML = `
+                        <strong>Nomor Memo:</strong> ${memo.nomorMemo}
+                        <span><strong>Perihal:</strong> ${memo.perihal}</span>
+                        <span><strong>Tanggal:</strong> ${memo.tanggal}</span>
+                        <span><strong>Status:</strong> ${memo.statusNotulen}</span>
+                        <br>
+                        <button class="view" onclick="viewPdf('${memo.pdfUrl}')">Lihat Memo PDF</button>
+                    `;
+                    memosContainer.appendChild(memoItem);
+                });
+            });
         }
 
         // Fungsi untuk melihat PDF
-        function viewPdf(index) {
-            const memos = getMemosFromStorage();
-            const memo = memos[index];
-
-            if (memo.pdfUrl) {
-                window.open(memo.pdfUrl, '_blank');
+        function viewPdf(pdfUrl) {
+            if (pdfUrl) {
+                window.open(pdfUrl, '_blank');
             } else {
                 alert('Tidak ada file PDF untuk memo ini.');
             }
         }
 
-        // Event listener untuk mengirim data form
-        document.getElementById('memoForm').addEventListener('submit', function(event) {
-            event.preventDefault();
-
-            const nomorMemo = document.getElementById('nomorMemo').value;
-            const perihal = document.getElementById('perihal').value;
-            const tanggal = document.getElementById('tanggal').value;
-            const statusNotulen = document.getElementById('statusNotulen').value;
-            const pdfFile = document.getElementById('pdfFile').files[0];
-
-            // Validasi input
-            if (!nomorMemo || !perihal || !tanggal || !statusNotulen || !pdfFile) {
-                document.getElementById('statusMessage').textContent = 'Semua field harus diisi!';
-                return;
-            }
-
-            // Upload file PDF
-            const pdfUrl = URL.createObjectURL(pdfFile);
-
-            // Simpan memo baru
-            const memo = {
-                nomorMemo,
-                perihal,
-                tanggal,
-                statusNotulen,
-                pdfUrl,
-            };
-
-            let memos = getMemosFromStorage();
-            memos.push(memo);
-            saveMemosToStorage(memos);
-
-            document.getElementById('statusMessage').textContent = 'Memo berhasil dikirim!';
-
-            // Reset form
-            document.getElementById('memoForm').reset();
-
-            // Perbarui daftar memo
-            displayMemos();
-        });
-
-        // Tampilkan daftar memo ketika halaman pertama kali dimuat
+        // Tampilkan memo setelah halaman dimuat
         displayMemos();
     </script>
 
