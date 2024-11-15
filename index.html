@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Form Notulen dan Memo</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.1/xlsx.full.min.js"></script>
+    <style>
+        /* Reset default margin and padding */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        /* Basic styling for body */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f4f6f9;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            color: #333;
+        }
+
+        /* Main container styling */
+        .container {
+            background-color: #fff;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            max-width: 700px;
+            overflow: hidden;
+        }
+
+        /* Heading styling */
+        h1 {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 20px;
+            text-align: center;
+            color: #333;
+        }
+
+        /* Form element styling */
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            color: #555;
+        }
+
+        input, select, button {
+            width: 100%;
+            padding: 14px;
+            margin-bottom: 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            color: #333;
+            background-color: #f9f9f9;
+            transition: all 0.3s ease;
+        }
+
+        input:focus, select:focus, button:focus {
+            border-color: #4CAF50;
+            outline: none;
+        }
+
+        /* Button styles */
+        button {
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        /* Status message */
+        .statusMessage {
+            text-align: center;
+            font-size: 16px;
+            color: #4CAF50;
+            margin-bottom: 20px;
+        }
+
+        /* List of memos styling */
+        .memo-list {
+            margin-top: 30px;
+            border-top: 2px solid #ddd;
+            padding-top: 20px;
+        }
+
+        .memo-item {
+            background-color: #fafafa;
+            padding: 16px;
+            margin-bottom: 16px;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .memo-item strong {
+            font-weight: 600;
+        }
+
+        .memo-item span {
+            display: block;
+            margin: 4px 0;
+            color: #555;
+        }
+
+        .memo-item button {
+            padding: 8px 16px;
+            font-size: 14px;
+            margin-right: 10px;
+            border: none;
+            border-radius: 6px;
+            transition: background-color 0.3s ease;
+        }
+
+        .memo-item button.view {
+            background-color: #2196F3;
+            color: white;
+        }
+
+        .memo-item button.view:hover {
+            background-color: #1976D2;
+        }
+
+        .memo-item button.edit {
+            background-color: #ffa500;
+            color: white;
+        }
+
+        .memo-item button.edit:hover {
+            background-color: #ff8c00;
+        }
+
+        .memo-item button.delete {
+            background-color: #f44336;
+            color: white;
+        }
+
+        .memo-item button.delete:hover {
+            background-color: #e53935;
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            button {
+                font-size: 14px;
+            }
+        }
+
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Form Notulen dan Memo</h1>
+        
+        <!-- Form untuk menginput data -->
+        <form id="memoForm">
+            <label for="nomorMemo">Nomor Memo:</label>
+            <input type="text" id="nomorMemo" name="nomorMemo" required><br>
+
+            <label for="perihal">Perihal:</label>
+            <input type="text" id="perihal" name="perihal" required><br>
+
+            <label for="tanggal">Tanggal:</label>
+            <input type="date" id="tanggal" name="tanggal" required><br>
+
+            <label for="statusNotulen">Status Notulen:</label>
+            <select id="statusNotulen" name="statusNotulen">
+                <option value="On Process">On Process</option>
+                <option value="Completed">Completed</option>
+                <option value="Not Yet Started">Not Yet Started</option>
+            </select><br>
+
+            <label for="pdfFile">Unggah PDF Memo:</label>
+            <input type="file" id="pdfFile" name="pdfFile" accept=".pdf"><br>
+
+            <button type="submit">Kirim Memo</button>
+        </form>
+
+        <div id="statusMessage" class="statusMessage"></div>
+
+        <!-- List of memos submitted -->
+        <div id="memoList" class="memo-list">
+            <h3>Daftar Notulen yang Sudah Dikirim</h3>
+            <div id="memosContainer"></div>
+        </div>
+    </div>
+
+    <script>
+        // Mendapatkan data memo yang telah disimpan di localStorage
+        function getMemosFromStorage() {
+            const memos = localStorage.getItem('memos');
+            return memos ? JSON.parse(memos) : [];
+        }
+
+        // Menyimpan data memo ke localStorage
+        function saveMemosToStorage(memos) {
+            localStorage.setItem('memos', JSON.stringify(memos));
+        }
+
+        // Tampilkan memo dalam list
+        function displayMemos() {
+            const memos = getMemosFromStorage();
+            const memosContainer = document.getElementById('memosContainer');
+            memosContainer.innerHTML = ''; // Clear previous memos
+
+            memos.forEach((memo, index) => {
+                const memoItem = document.createElement('div');
+                memoItem.classList.add('memo-item');
+                memoItem.innerHTML = `
+                    <strong>Nomor Memo:</strong> ${memo.nomorMemo}
+                    <span><strong>Perihal:</strong> ${memo.perihal}</span>
+                    <span><strong>Tanggal:</strong> ${memo.tanggal}</span>
+                    <span><strong>Status:</strong> ${memo.statusNotulen}</span>
+                    <br>
+                    <button class="view" onclick="viewPdf(${index})">Lihat Memo PDF</button>
+                    <button class="edit" onclick="editMemo(${index})">Edit</button>
+                    <button class="delete" onclick="deleteMemo(${index})">Hapus</button>
+                `;
+                memosContainer.appendChild(memoItem);
+            });
+        }
+
+        // Fungsi untuk mengedit memo
+        function editMemo(index) {
+            const memos = getMemosFromStorage();
+            const memo = memos[index];
+
+            // Isi form dengan data yang akan diedit
+            document.getElementById('nomorMemo').value = memo.nomorMemo;
+            document.getElementById('perihal').value = memo.perihal;
+            document.getElementById('tanggal').value = memo.tanggal;
+            document.getElementById('statusNotulen').value = memo.statusNotulen;
+
+            // Hapus memo dari localStorage, sehingga bisa disimpan kembali dengan perubahan
+            deleteMemo(index);
+        }
+
+        // Fungsi untuk menghapus memo
+        function deleteMemo(index) {
+            let memos = getMemosFromStorage();
+            memos.splice(index, 1); // Hapus memo berdasarkan index
+            saveMemosToStorage(memos);
+            displayMemos(); // Perbarui tampilan daftar memo
+        }
+
+        // Fungsi untuk melihat PDF
+        function viewPdf(index) {
+            const memos = getMemosFromStorage();
+            const memo = memos[index];
+
+            if (memo.pdfUrl) {
+                window.open(memo.pdfUrl, '_blank');
+            } else {
+                alert('Tidak ada file PDF untuk memo ini.');
+            }
+        }
+
+        // Event listener untuk mengirim data form
+        document.getElementById('memoForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const nomorMemo = document.getElementById('nomorMemo').value;
+            const perihal = document.getElementById('perihal').value;
+            const tanggal = document.getElementById('tanggal').value;
+            const statusNotulen = document.getElementById('statusNotulen').value;
+            const pdfFile = document.getElementById('pdfFile').files[0];
+
+            // Validasi input
+            if (!nomorMemo || !perihal || !tanggal || !statusNotulen || !pdfFile) {
+                document.getElementById('statusMessage').textContent = 'Semua field harus diisi!';
+                return;
+            }
+
+            // Upload file PDF
+            const pdfUrl = URL.createObjectURL(pdfFile);
+
+            // Simpan memo baru
+            const memo = {
+                nomorMemo,
+                perihal,
+                tanggal,
+                statusNotulen,
+                pdfUrl,
+            };
+
+            let memos = getMemosFromStorage();
+            memos.push(memo);
+            saveMemosToStorage(memos);
+
+            document.getElementById('statusMessage').textContent = 'Memo berhasil dikirim!';
+
+            // Reset form
+            document.getElementById('memoForm').reset();
+
+            // Perbarui daftar memo
+            displayMemos();
+        });
+
+        // Tampilkan daftar memo ketika halaman pertama kali dimuat
+        displayMemos();
+    </script>
+
+</body>
+</html>
